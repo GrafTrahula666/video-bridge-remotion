@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VideoBridge">
+  <defs>
+    <linearGradient id="g" x1="72" y1="42" x2="438" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5679F2"/>
+      <stop offset="1" stop-color="#2344B8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="118" fill="url(#g)"/>
+  <path d="M132 154h64l60 182 60-182h64L287 376h-62L132 154Z" fill="white"/>
+</svg>

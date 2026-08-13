@@ -1,0 +1,39 @@
+{
+  "name": "video-bridge-remotion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "qa": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "remotion:test": "node --import tsx remotion-test/run.ts"
+  },
+  "dependencies": {
+    "@vercel/blob": "^2.8.0",
+    "client-zip": "^2.5.0",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "workflow": "^4.8.2"
+  },
+  "devDependencies": {
+    "@remotion/bundler": "^4.0.509",
+    "@remotion/media": "^4.0.509",
+    "@remotion/renderer": "^4.0.509",
+    "@sparticuz/chromium": "^149.0.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "remotion": "^4.0.509",
+    "tsx": "^4.20.6",
+    "typescript": "^5",
+    "vitest": "^4.1.10"
+  }
+}
