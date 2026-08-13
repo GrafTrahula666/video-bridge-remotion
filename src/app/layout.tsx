@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "VideoBridge",
   },
-  icons: { icon: "/icon.svg", apple: "/apple-touch-icon.png" },
+  icons: { icon: "/icon.svg", apple: "/icon.svg" },
   robots: { index: false, follow: false, noarchive: true },
 };
 
