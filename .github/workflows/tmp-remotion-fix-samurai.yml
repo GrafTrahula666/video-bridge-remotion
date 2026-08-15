@@ -68,6 +68,14 @@ jobs:
           cd output
           zip -9 samurai-cleaned.zip samurai-cleaned.mp4
 
+      - name: Upload source video
+        uses: actions/upload-artifact@v4
+        with:
+          name: samurai-source-video
+          path: tmp-video/source.mp4
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload QA contacts
         uses: actions/upload-artifact@v4
         with:
