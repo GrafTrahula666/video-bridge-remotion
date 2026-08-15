@@ -11,13 +11,20 @@ permissions:
 jobs:
   process:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       VIDEO_URL: https://nfmas1ki6eodzo0p.public.blob.vercel-storage.com/uploads/2026-08-15/92757f4d-8467-4cb5-b2bf-c516029a2a20/source-video.mp4
     steps:
       - uses: actions/checkout@v4
         with:
           ref: tmp/remotion-fix-samurai-20260815
+
+      - name: Install media tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core zip
 
       - name: Download and probe source
         shell: bash
