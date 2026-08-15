@@ -1,18 +1,7 @@
-import { getVercelOidcToken } from "@vercel/oidc";
-
-async function hasBlobCredentials(): Promise<boolean> {
-  if (process.env.BLOB_READ_WRITE_TOKEN) return true;
-  if (!process.env.BLOB_STORE_ID) return false;
-
-  try {
-    return Boolean((await getVercelOidcToken()).trim());
-  } catch {
-    return false;
-  }
-}
-
-export async function GET() {
-  const blobConfigured = await hasBlobCredentials();
+export function GET() {
+  const blobConfigured = Boolean(
+    process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID,
+  );
 
   return Response.json(
     {
