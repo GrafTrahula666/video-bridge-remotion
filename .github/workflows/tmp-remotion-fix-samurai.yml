@@ -68,6 +68,27 @@ jobs:
           cd output
           zip -9 samurai-cleaned.zip samurai-cleaned.mp4
 
+      - name: Upload QA contacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: samurai-qa-contacts
+          path: |
+            analysis/source-contact.jpg
+            analysis/clean-contact.jpg
+            analysis/probe.txt
+            analysis/probe.json
+            analysis/clean-probe.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload cleaned video
+        uses: actions/upload-artifact@v4
+        with:
+          name: samurai-cleaned-video
+          path: output/samurai-cleaned.mp4
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Commit QA outputs to temporary branch
         shell: bash
         run: |
