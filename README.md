@@ -22,9 +22,9 @@
 
 ```mermaid
 flowchart TD
-  A["iPhone / ПК"] -->|"client upload + multipart"| B["Public Vercel Blob"]
-  A -->|"короткий token request"| C["Next.js API"]
-  C -->|"signed client token"| A
+  A["iPhone / ПК"] -->|"presigned upload + multipart"| B["Public Vercel Blob"]
+  A -->|"короткий authorization request"| C["Next.js API"]
+  C -->|"presigned URL через OIDC"| A
   B -->|"direct HTTPS URL"| D["Remotion test / AI workspace"]
   C -->|"start at upload completion"| E["24h deletion workflow"]
   F["Daily protected Cron"] -->|"backstop cleanup"| B
@@ -38,7 +38,10 @@ flowchart TD
 
 | Key | Назначение |
 |---|---|
-| `BLOB_READ_WRITE_TOKEN` | Автоматически создаётся/подключается Vercel Blob Store |
+| `BLOB_STORE_ID` | Автоматически добавляется при подключении Vercel Blob Store |
+| `BLOB_WEBHOOK_PUBLIC_KEY` | Автоматически добавляется Blob для проверки callback-подписи |
+| `VERCEL_OIDC_TOKEN` | Системный краткоживущий токен Vercel; автоматически доступен на deployment |
+| `BLOB_READ_WRITE_TOKEN` | Необязательный legacy fallback только для локальной разработки |
 | `VIDEOBRIDGE_ACCESS_KEY` | Персональный код, который вводится в интерфейсе |
 | `VIDEOBRIDGE_SIGNING_SECRET` | Случайная строка минимум 32 байта для HMAC delete token |
 | `CRON_SECRET` | Случайная строка минимум 32 байта; Vercel передаёт её Cron route |
@@ -52,7 +55,7 @@ npm install
 npm run dev
 ```
 
-Без реального `BLOB_READ_WRITE_TOKEN` интерфейс и unit tests работают, но загрузка в Blob — нет.
+Для локальной загрузки выполните `vercel link` и `vercel env pull .env.local`, чтобы получить `BLOB_STORE_ID`, `BLOB_WEBHOOK_PUBLIC_KEY` и временный `VERCEL_OIDC_TOKEN`. Legacy `BLOB_READ_WRITE_TOKEN` также поддерживается как fallback.
 
 ## Проверки
 

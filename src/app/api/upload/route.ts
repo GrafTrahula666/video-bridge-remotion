@@ -1,4 +1,8 @@
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
+import { issueSignedToken } from "@vercel/blob";
+import {
+  handleUploadPresigned,
+  type HandleUploadPresignedBody,
+} from "@vercel/blob/client";
 import { start } from "workflow/api";
 import { MAX_UPLOAD_BYTES, SUPPORTED_VIDEO_TYPES } from "@/lib/config";
 import { enforceRateLimit, jsonError } from "@/lib/http";
@@ -25,15 +29,20 @@ function parsePayload(value: string | null): UploadPayload {
 
 export async function POST(request: Request) {
   try {
-    const limited = enforceRateLimit(request, "upload-token", 30);
-    if (limited) return limited;
-    if (!hasValidAccessKey(request)) return jsonError("Неверный код доступа.", 401);
+    const body = (await request.json()) as HandleUploadPresignedBody;
 
-    const body = (await request.json()) as HandleUploadBody;
-    const result = await handleUpload({
+    if (body.type === "blob.generate-presigned-url") {
+      const limited = enforceRateLimit(request, "upload-token", 30);
+      if (limited) return limited;
+      if (!hasValidAccessKey(request)) {
+        return jsonError("Неверный код доступа.", 401);
+      }
+    }
+
+    const result = await handleUploadPresigned({
       request,
       body,
-      onBeforeGenerateToken: async (pathname, clientPayload, multipart) => {
+      getSignedToken: async (pathname, clientPayload, multipart) => {
         if (!/^uploads\/\d{4}-\d{2}-\d{2}\/[0-9a-f-]{36}\/source-video\.(mp4|mov|webm)$/.test(pathname)) {
           throw new Error("Недопустимый путь загрузки.");
         }
@@ -43,15 +52,27 @@ export async function POST(request: Request) {
         }
         const extension = getExtension(pathname) as keyof typeof SUPPORTED_VIDEO_TYPES;
         const expectedMultipart = multipart;
+        const validUntil = Date.now() + 4 * 60 * 60 * 1000;
+        const allowedContentTypes = [...SUPPORTED_VIDEO_TYPES[extension]];
+        const tokenPayload = JSON.stringify({ ...payload, expectedMultipart });
 
         return {
-          allowedContentTypes: [...SUPPORTED_VIDEO_TYPES[extension]],
-          maximumSizeInBytes: MAX_UPLOAD_BYTES,
-          validUntil: Date.now() + 4 * 60 * 60 * 1000,
-          addRandomSuffix: false,
-          allowOverwrite: false,
-          cacheControlMaxAge: 60,
-          tokenPayload: JSON.stringify({ ...payload, expectedMultipart }),
+          token: await issueSignedToken({
+            pathname,
+            operations: ["put"],
+            allowedContentTypes,
+            maximumSizeInBytes: MAX_UPLOAD_BYTES,
+            validUntil,
+          }),
+          urlOptions: {
+            allowedContentTypes,
+            maximumSizeInBytes: MAX_UPLOAD_BYTES,
+            validUntil,
+            addRandomSuffix: false,
+            allowOverwrite: false,
+            cacheControlMaxAge: 60,
+            tokenPayload,
+          },
         };
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { upload } from "@vercel/blob/client";
+import { uploadPresigned } from "@vercel/blob/client";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -332,7 +332,7 @@ export function VideoBridge() {
       );
 
       setStatus("uploading");
-      const blob = await upload(authorization.pathname, selectedFile, {
+      const blob = await uploadPresigned(authorization.pathname, selectedFile, {
         access: "public",
         handleUploadUrl: "/api/upload",
         headers: { "x-videobridge-key": accessKey },
