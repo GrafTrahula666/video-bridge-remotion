@@ -1,0 +1,72 @@
+name: Temporary Samurai Video Cleanup
+
+on:
+  push:
+    branches:
+      - tmp/remotion-fix-samurai-20260815
+
+permissions:
+  contents: write
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VIDEO_URL: https://nfmas1ki6eodzo0p.public.blob.vercel-storage.com/uploads/2026-08-15/92757f4d-8467-4cb5-b2bf-c516029a2a20/source-video.mp4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tmp/remotion-fix-samurai-20260815
+
+      - name: Download and probe source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp-video analysis output
+          curl -L --fail --retry 3 --retry-all-errors "$VIDEO_URL" -o tmp-video/source.mp4
+          ffprobe -v error -show_streams -show_format -of json tmp-video/source.mp4 > analysis/probe.json
+          ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,r_frame_rate,avg_frame_rate -show_entries format=duration,size -of default=noprint_wrappers=1 tmp-video/source.mp4 > analysis/probe.txt
+
+      - name: Create source contact sheet
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -hide_banner -loglevel error -y -i tmp-video/source.mp4 \
+            -vf "fps=2,scale=320:-2:flags=lanczos,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='%{pts\\:hms}':x=8:y=h-th-8:fontsize=18:fontcolor=white:borderw=2:bordercolor=black,tile=5x4:padding=4:margin=4" \
+            -frames:v 1 analysis/source-contact.jpg
+
+      - name: Conservative artifact cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -hide_banner -loglevel error -y -i tmp-video/source.mp4 \
+            -vf "deflicker=size=5:mode=am,hqdn3d=0.8:0.8:4:4,unsharp=5:5:0.28:5:5:0.0,eq=contrast=1.025:brightness=-0.006:saturation=0.92" \
+            -c:v libx264 -preset slow -crf 16 -pix_fmt yuv420p \
+            -c:a aac -b:a 192k -movflags +faststart output/samurai-cleaned.mp4
+
+      - name: Create cleaned contact sheet
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -hide_banner -loglevel error -y -i output/samurai-cleaned.mp4 \
+            -vf "fps=2,scale=320:-2:flags=lanczos,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='%{pts\\:hms}':x=8:y=h-th-8:fontsize=18:fontcolor=white:borderw=2:bordercolor=black,tile=5x4:padding=4:margin=4" \
+            -frames:v 1 analysis/clean-contact.jpg
+          ffprobe -v error -show_streams -show_format -of json output/samurai-cleaned.mp4 > analysis/clean-probe.json
+
+      - name: Package cleaned video
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd output
+          zip -9 samurai-cleaned.zip samurai-cleaned.mp4
+
+      - name: Commit QA outputs to temporary branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ChatGPT Remotion QA"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add analysis output/samurai-cleaned.zip
+          git commit -m "test: add samurai cleanup QA outputs" || exit 0
+          git push origin HEAD:tmp/remotion-fix-samurai-20260815
