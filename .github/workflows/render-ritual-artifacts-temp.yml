@@ -1,0 +1,64 @@
+name: Render ritual from preserved sources
+on:
+  push:
+    paths:
+      - '.github/workflows/render-ritual-artifacts-temp.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python3 -m pip install --quiet numpy
+          npm install --no-audit --no-fund
+
+      - name: Restore verified first source
+        uses: actions/download-artifact@v4
+        with:
+          name: source-video-1-ingested
+          path: remotion-final-temp/public
+          github-token: ${{ github.token }}
+          repository: GrafTrahula666/video-bridge-remotion
+          run-id: 33022562698
+
+      - name: Restore preserved second source
+        uses: actions/download-artifact@v4
+        with:
+          name: preserved-source-video-2
+          path: remotion-final-temp/public
+          github-token: ${{ github.token }}
+          repository: GrafTrahula666/video-bridge-remotion
+          run-id: 33022144996
+
+      - name: Verify sources and prepare edit
+        run: |
+          ls -lh remotion-final-temp/public/source-video-1.mp4 remotion-final-temp/public/source-video-2.mp4
+          python3 remotion-final-temp/prepare.py
+          cat render.env
+
+      - name: Render with Remotion
+        run: |
+          set -euo pipefail
+          source render.env
+          export FIRST_FRAMES SECOND_FRAMES OVERLAP_FRAMES
+          node --import tsx remotion-final-temp/run.ts
+          ffprobe -v error -show_entries format=duration,size -show_entries stream=codec_name,codec_type,width,height,r_frame_rate,sample_rate,channels -of json remotion-final-temp/output/shaman-ritual-final.mp4
+          ls -lh remotion-final-temp/output/shaman-ritual-final.mp4
+
+      - name: Upload final video
+        uses: actions/upload-artifact@v4
+        with:
+          name: shaman-ritual-remotion-final
+          path: remotion-final-temp/output/shaman-ritual-final.mp4
+          compression-level: 0
+          retention-days: 3
