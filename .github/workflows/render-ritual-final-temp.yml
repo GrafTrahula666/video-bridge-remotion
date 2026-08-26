@@ -16,7 +16,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg
           python3 -m pip install --quiet numpy
-          npm ci
+          npm install --no-audit --no-fund
 
       - name: Download source media
         run: |
@@ -54,7 +54,6 @@ jobs:
               score=sum(mad(a[-k+i],b[i]) for i in range(k))/k
               if score < 0.055:
                   chosen=k; chosen_score=score
-          # Conservative cap: never remove more than 12 frames (0.5 s).
           chosen=min(chosen,12)
           print(f'OVERLAP_FRAMES={chosen} score={chosen_score:.6f}')
           Path('overlap.env').write_text(f'OVERLAP_FRAMES={chosen}\n')
@@ -89,17 +88,11 @@ jobs:
           n=int(dur*sr)
           t=np.arange(n,dtype=np.float64)/sr
           rng=np.random.default_rng(260827)
-
-          # Dark cinematic drone bed.
           slow=0.72+0.28*np.sin(2*np.pi*0.045*t+0.4)
           music=(0.12*np.sin(2*np.pi*55*t)+0.065*np.sin(2*np.pi*82.5*t+0.7)+0.04*np.sin(2*np.pi*110*t+1.3))*slow
-
-          # Soft forest air / ritual haze.
           noise=rng.normal(0,1,n)
           kernel=np.ones(260)/260
-          air=np.convolve(noise,kernel,mode='same')*0.05
-          music+=air
-
+          music+=np.convolve(noise,kernel,mode='same')*0.05
           def drum(at,amp=0.50):
               s=int(at*sr); L=min(n-s,int(0.72*sr))
               if L<=0:return
@@ -110,8 +103,6 @@ jobs:
               body=np.sin(phase)
               click=rng.normal(0,1,L)*np.exp(-18*x)
               music[s:s+L]+=amp*env*(0.86*body+0.14*click)
-
-          # Ritual drums gradually enter and intensify.
           bpm=78
           beat=60/bpm
           at=3.2; i=0
@@ -121,8 +112,6 @@ jobs:
               if p>0.42 and i%2==1: drum(at+beat/2,0.22+0.22*p)
               if p>0.68: drum(at+beat/4,0.15+0.14*p)
               at+=beat; i+=1
-
-          # Jaw-harp-like metallic resonance in the middle.
           for at in np.arange(max(7.0,dur*0.34),dur*0.82,beat*2):
               s=int(at*sr); L=min(n-s,int(0.85*sr))
               if L<=0: continue
@@ -131,8 +120,6 @@ jobs:
               phase=2*np.pi*np.cumsum(123+7*np.sin(2*np.pi*4.2*x))/sr
               sig=(np.sin(phase)+0.38*np.sin(2*phase)+0.18*np.sin(3*phase))*env*0.10
               music[s:s+L]+=sig
-
-          # Distant wordless shamanic vocal texture, intentionally subtle.
           s=int(dur*0.46*sr); e=int(dur*0.90*sr)
           if e>s:
               x=t[s:e]-t[s]
@@ -140,32 +127,21 @@ jobs:
               chant=(np.sin(2*np.pi*164*x)+0.34*np.sin(2*np.pi*246*x+0.8))*0.035*fade
               chant*=0.75+0.25*np.sin(2*np.pi*1.6*x)
               music[s:e]+=chant
-
-          # Supernatural escalation toward climax.
           s=int(dur*0.62*sr); e=int(dur*0.86*sr)
           if e>s:
               x=np.arange(e-s)/sr
               rise=np.linspace(0,1,e-s)
               music[s:e]+=0.065*rise*np.sin(2*np.pi*(39+5*rise)*x)
-
-          # Brief tension vacuum before the last surge.
           cs=int(dur*0.80*sr); ce=min(n,cs+int(0.16*sr))
           music[cs:ce]*=np.linspace(1.0,0.15,max(1,ce-cs))
-
-          # Deep impact immediately after the vacuum.
           s=ce; L=min(n-s,int(1.4*sr))
           if L>0:
               x=np.arange(L)/sr
               music[s:s+L]+=0.58*np.sin(2*np.pi*(58*np.exp(-1.6*x)+30)*x)*np.exp(-3.4*x)
-
-          # Calm the ending rather than cutting off harshly.
           fs=int(dur*0.92*sr)
           if fs<n: music[fs:]*=np.linspace(1.0,0.22,n-fs)
-
-          # Stereo width and gentle saturation.
           delay=int(0.013*sr)
-          left=music.copy()
-          right=np.concatenate([np.zeros(delay),music[:-delay]]) if delay<n else music.copy()
+          left=music.copy(); right=np.concatenate([np.zeros(delay),music[:-delay]]) if delay<n else music.copy()
           stereo=np.stack([left,right],axis=1)
           peak=max(1e-9,float(np.max(np.abs(stereo))))
           stereo=np.tanh(stereo/(peak*0.90))*0.88
