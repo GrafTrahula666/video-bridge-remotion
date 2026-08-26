@@ -1,0 +1,195 @@
+name: Render ritual final Remotion
+on:
+  push:
+    paths:
+      - '.github/workflows/render-ritual-final-temp.yml'
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python3 -m pip install --quiet numpy
+          npm ci
+
+      - name: Download source media
+        run: |
+          set -euo pipefail
+          mkdir -p remotion-final-temp/public
+          curl -L --fail --retry 4 --retry-all-errors \
+            'https://nfmas1ki6eodzo0p.public.blob.vercel-storage.com/uploads/2026-08-26/b4e5cd97-02d9-40b0-9095-65db7d2c7cae/source-video.mp4' \
+            -o remotion-final-temp/public/source-video-1.mp4
+          curl -L --fail --retry 4 --retry-all-errors \
+            'https://nfmas1ki6eodzo0p.public.blob.vercel-storage.com/uploads/2026-08-26/e495c70f-ce78-45a2-b83a-3755eff4caf7/source-video.mp4' \
+            -o remotion-final-temp/public/source-video-2.mp4
+          ffprobe -v error -show_entries format=duration,size -show_entries stream=codec_name,width,height,r_frame_rate -of json remotion-final-temp/public/source-video-1.mp4
+          ffprobe -v error -show_entries format=duration,size -show_entries stream=codec_name,width,height,r_frame_rate -of json remotion-final-temp/public/source-video-2.mp4
+
+      - name: Detect matching boundary frames
+        run: |
+          set -euo pipefail
+          ffmpeg -y -hide_banner -loglevel error -sseof -1.5 -i remotion-final-temp/public/source-video-1.mp4 \
+            -vf 'fps=24,scale=64:64,format=gray' -f rawvideo tail.raw
+          ffmpeg -y -hide_banner -loglevel error -i remotion-final-temp/public/source-video-2.mp4 -t 1.5 \
+            -vf 'fps=24,scale=64:64,format=gray' -f rawvideo head.raw
+          python3 <<'PY'
+          from pathlib import Path
+          frame_size=64*64
+          def frames(path):
+              b=Path(path).read_bytes()
+              return [b[i:i+frame_size] for i in range(0,len(b)-frame_size+1,frame_size)]
+          a=frames('tail.raw'); b=frames('head.raw')
+          def mad(x,y):
+              return sum(abs(i-j) for i,j in zip(x,y))/(len(x)*255)
+          maxk=min(len(a),len(b),24)
+          chosen=1
+          chosen_score=mad(a[-1],b[0]) if a and b else 1.0
+          for k in range(1,maxk+1):
+              score=sum(mad(a[-k+i],b[i]) for i in range(k))/k
+              if score < 0.055:
+                  chosen=k; chosen_score=score
+          # Conservative cap: never remove more than 12 frames (0.5 s).
+          chosen=min(chosen,12)
+          print(f'OVERLAP_FRAMES={chosen} score={chosen_score:.6f}')
+          Path('overlap.env').write_text(f'OVERLAP_FRAMES={chosen}\n')
+          PY
+          cat overlap.env
+
+      - name: Build timing metadata
+        run: |
+          set -euo pipefail
+          D1=$(ffprobe -v error -show_entries format=duration -of csv=p=0 remotion-final-temp/public/source-video-1.mp4)
+          D2=$(ffprobe -v error -show_entries format=duration -of csv=p=0 remotion-final-temp/public/source-video-2.mp4)
+          python3 - <<PY > timing.env
+          d1=float('$D1'); d2=float('$D2'); fps=24
+          print(f'FIRST_FRAMES={round(d1*fps)}')
+          print(f'SECOND_FRAMES={round(d2*fps)}')
+          PY
+          cat timing.env
+
+      - name: Create dark shamanic soundtrack
+        run: |
+          set -euo pipefail
+          source overlap.env
+          source timing.env
+          export OVERLAP_FRAMES FIRST_FRAMES SECOND_FRAMES
+          python3 <<'PY'
+          import os, wave
+          import numpy as np
+          sr=48000
+          fps=24
+          f1=int(os.environ['FIRST_FRAMES']); f2=int(os.environ['SECOND_FRAMES']); ov=int(os.environ['OVERLAP_FRAMES'])
+          dur=(f1+f2-ov)/fps
+          n=int(dur*sr)
+          t=np.arange(n,dtype=np.float64)/sr
+          rng=np.random.default_rng(260827)
+
+          # Dark cinematic drone bed.
+          slow=0.72+0.28*np.sin(2*np.pi*0.045*t+0.4)
+          music=(0.12*np.sin(2*np.pi*55*t)+0.065*np.sin(2*np.pi*82.5*t+0.7)+0.04*np.sin(2*np.pi*110*t+1.3))*slow
+
+          # Soft forest air / ritual haze.
+          noise=rng.normal(0,1,n)
+          kernel=np.ones(260)/260
+          air=np.convolve(noise,kernel,mode='same')*0.05
+          music+=air
+
+          def drum(at,amp=0.50):
+              s=int(at*sr); L=min(n-s,int(0.72*sr))
+              if L<=0:return
+              x=np.arange(L)/sr
+              env=np.exp(-6.2*x)
+              freq=115*np.exp(-3*x)+42
+              phase=2*np.pi*np.cumsum(freq)/sr
+              body=np.sin(phase)
+              click=rng.normal(0,1,L)*np.exp(-18*x)
+              music[s:s+L]+=amp*env*(0.86*body+0.14*click)
+
+          # Ritual drums gradually enter and intensify.
+          bpm=78
+          beat=60/bpm
+          at=3.2; i=0
+          while at<dur-2.2:
+              p=at/dur
+              drum(at,0.28+0.33*p)
+              if p>0.42 and i%2==1: drum(at+beat/2,0.22+0.22*p)
+              if p>0.68: drum(at+beat/4,0.15+0.14*p)
+              at+=beat; i+=1
+
+          # Jaw-harp-like metallic resonance in the middle.
+          for at in np.arange(max(7.0,dur*0.34),dur*0.82,beat*2):
+              s=int(at*sr); L=min(n-s,int(0.85*sr))
+              if L<=0: continue
+              x=np.arange(L)/sr
+              env=np.exp(-3.5*x)
+              phase=2*np.pi*np.cumsum(123+7*np.sin(2*np.pi*4.2*x))/sr
+              sig=(np.sin(phase)+0.38*np.sin(2*phase)+0.18*np.sin(3*phase))*env*0.10
+              music[s:s+L]+=sig
+
+          # Distant wordless shamanic vocal texture, intentionally subtle.
+          s=int(dur*0.46*sr); e=int(dur*0.90*sr)
+          if e>s:
+              x=t[s:e]-t[s]
+              fade=np.sin(np.linspace(0,np.pi,e-s))**1.2
+              chant=(np.sin(2*np.pi*164*x)+0.34*np.sin(2*np.pi*246*x+0.8))*0.035*fade
+              chant*=0.75+0.25*np.sin(2*np.pi*1.6*x)
+              music[s:e]+=chant
+
+          # Supernatural escalation toward climax.
+          s=int(dur*0.62*sr); e=int(dur*0.86*sr)
+          if e>s:
+              x=np.arange(e-s)/sr
+              rise=np.linspace(0,1,e-s)
+              music[s:e]+=0.065*rise*np.sin(2*np.pi*(39+5*rise)*x)
+
+          # Brief tension vacuum before the last surge.
+          cs=int(dur*0.80*sr); ce=min(n,cs+int(0.16*sr))
+          music[cs:ce]*=np.linspace(1.0,0.15,max(1,ce-cs))
+
+          # Deep impact immediately after the vacuum.
+          s=ce; L=min(n-s,int(1.4*sr))
+          if L>0:
+              x=np.arange(L)/sr
+              music[s:s+L]+=0.58*np.sin(2*np.pi*(58*np.exp(-1.6*x)+30)*x)*np.exp(-3.4*x)
+
+          # Calm the ending rather than cutting off harshly.
+          fs=int(dur*0.92*sr)
+          if fs<n: music[fs:]*=np.linspace(1.0,0.22,n-fs)
+
+          # Stereo width and gentle saturation.
+          delay=int(0.013*sr)
+          left=music.copy()
+          right=np.concatenate([np.zeros(delay),music[:-delay]]) if delay<n else music.copy()
+          stereo=np.stack([left,right],axis=1)
+          peak=max(1e-9,float(np.max(np.abs(stereo))))
+          stereo=np.tanh(stereo/(peak*0.90))*0.88
+          pcm=np.int16(np.clip(stereo,-1,1)*32767)
+          out='remotion-final-temp/public/ritual-music.wav'
+          with wave.open(out,'wb') as wf:
+              wf.setnchannels(2); wf.setsampwidth(2); wf.setframerate(sr); wf.writeframes(pcm.tobytes())
+          print('soundtrack',out,'duration',dur)
+          PY
+
+      - name: Render with Remotion
+        run: |
+          set -euo pipefail
+          source overlap.env
+          source timing.env
+          export OVERLAP_FRAMES FIRST_FRAMES SECOND_FRAMES
+          node --import tsx remotion-final-temp/run.ts
+          ffprobe -v error -show_entries format=duration,size -show_entries stream=codec_name,codec_type,width,height,r_frame_rate,sample_rate,channels -of json remotion-final-temp/output/shaman-ritual-final.mp4
+          ls -lh remotion-final-temp/output/shaman-ritual-final.mp4
+
+      - name: Upload final video
+        uses: actions/upload-artifact@v4
+        with:
+          name: shaman-ritual-remotion-final
+          path: remotion-final-temp/output/shaman-ritual-final.mp4
+          compression-level: 0
+          retention-days: 3
